@@ -217,3 +217,114 @@ async fn main() {
 
     axum::serve(listener, app).await.unwrap();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_user(state: &AppState, email: &str) -> User {
+        let create_user = CreateUser {
+            email: email.to_string(),
+            password: "test_password".to_string(),
+            name: "Test User".to_string(),
+        };
+        state.create_user(create_user).unwrap()
+    }
+
+    #[test]
+    fn test_create_user() {
+        let state = AppState::new();
+        let user = create_test_user(&state, "test@example.com");
+
+        assert_eq!(user.email, "test@example.com");
+        assert_eq!(user.name, "Test User");
+        assert_eq!(user.id, 1);
+        assert!(user.password.starts_with("$argon2"));
+    }
+
+    #[test]
+    fn test_get_user() {
+        let state = AppState::new();
+        let created_user = create_test_user(&state, "test@example.com");
+
+        let retrieved_user = state.get_user(created_user.id).unwrap();
+        assert_eq!(retrieved_user.email, created_user.email);
+        assert_eq!(retrieved_user.name, created_user.name);
+        assert_eq!(retrieved_user.id, created_user.id);
+
+        assert!(state.get_user(999).is_none());
+    }
+
+    #[test]
+    fn test_update_user() {
+        let state = AppState::new();
+        let user = create_test_user(&state, "test@example.com");
+
+        let update = UpdateUser {
+            email: Some("updated@example.com".to_string()),
+            password: Some("new_password".to_string()),
+            name: Some("Updated Name".to_string()),
+        };
+
+        let updated_user = state.update_user(user.id, update).unwrap();
+        assert_eq!(updated_user.email, "updated@example.com");
+        assert_eq!(updated_user.name, "Updated Name");
+        assert_ne!(updated_user.password, user.password);
+        assert!(updated_user.updated_at > user.updated_at);
+
+        // Test partial update
+        let partial_update = UpdateUser {
+            email: None,
+            password: None,
+            name: Some("Just Name Update".to_string()),
+        };
+
+        let partially_updated_user = state.update_user(user.id, partial_update).unwrap();
+        assert_eq!(partially_updated_user.email, "updated@example.com"); // unchanged
+        assert_eq!(partially_updated_user.name, "Just Name Update");
+    }
+
+    #[test]
+    fn test_delete_user() {
+        let state = AppState::new();
+        let user = create_test_user(&state, "test@example.com");
+
+        let deleted_user = state.delete_user(user.id).unwrap();
+        assert_eq!(deleted_user.id, user.id);
+
+        assert!(state.get_user(user.id).is_none());
+        assert!(state.delete_user(user.id).is_none());
+    }
+
+    #[test]
+    fn test_list_users() {
+        let state = AppState::new();
+        let user1 = create_test_user(&state, "test1@example.com");
+        let user2 = create_test_user(&state, "test2@example.com");
+
+        let users = state.list_users();
+        assert_eq!(users.len(), 2);
+
+        let emails: Vec<_> = users.iter().map(|u| &u.email).collect();
+        assert!(emails.contains(&&user1.email));
+        assert!(emails.contains(&&user2.email));
+    }
+
+    #[test]
+    fn test_health() {
+        let state = AppState::new();
+        assert!(state.health());
+    }
+
+    #[test]
+    fn test_password_hashing() {
+        let state = AppState::new();
+        let user1 = create_test_user(&state, "test1@example.com");
+        let user2 = create_test_user(&state, "test2@example.com");
+
+        // Even with same password, hashes should be different due to salt
+        assert_ne!(user1.password, user2.password);
+        assert!(user1.password.starts_with("$argon2"));
+        assert!(user2.password.starts_with("$argon2"));
+    }
+}

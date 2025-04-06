@@ -53,7 +53,7 @@ jobs:
       - name: Lint rust sources
         run: cargo clippy --all-targets --all-features --tests --benches -- -D warnings
       - name: Execute rust tests
-        run: cargo nextest run --all-features
+        run: cargo nextest run --all-features --examples
       - name: Generate a changelog
         uses: orhun/git-cliff-action@v2
         id: git-cliff

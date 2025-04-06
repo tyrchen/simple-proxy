@@ -2,7 +2,7 @@ build:
 	@cargo build
 
 test:
-	@cargo nextest run --all-features
+	@cargo nextest run --all-features --examples
 
 release:
 	@cargo release tag --execute
