@@ -1,0 +1,28 @@
+[package]
+name = "simple-proxy"
+version = "0.1.0"
+authors = ["Tyr Chen <tyr.chen@gmail.com>"]
+edition = "2021"
+license = "MIT"
+documentation = "https://docs.rs/"
+repository = "https://github.com/tyrchen/simple-proxy"
+homepage = "https://github.com/tyrchen/simple-proxy"
+description = """
+A simple proxy server in Rust.
+"""
+readme = "README.md"
+categories = ["development-tools"]
+keywords = []
+
+[dependencies]
+axum = "0.8"
+dashmap = "6.1"
+argon2 = { version = "0.5.3" }
+tokio = { version = "1.44", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+rand = { version = "0.8" }
+[[example]]
+name = "server"
+path = "examples/server.rs"
