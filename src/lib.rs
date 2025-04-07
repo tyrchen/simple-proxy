@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use http::HeaderName;
 use pingora::{http::ResponseHeader, prelude::*};
 use tracing::{info, warn};
 
@@ -31,7 +30,7 @@ impl ProxyHttp for SimpleProxy {
         Self::CTX: Send + Sync,
     {
         info!("upstream_request_filter: {:?}", upstream_request);
-        upstream_request.insert_header(HeaderName::from_static("user-agent"), "SimpleProxy/0.1")?;
+        upstream_request.insert_header("user-agent", "SimpleProxy/0.1")?;
         Ok(())
     }
 
@@ -42,23 +41,17 @@ impl ProxyHttp for SimpleProxy {
         _ctx: &mut Self::CTX,
     ) {
         info!("upstream_response_filter: {:?}", upstream_response);
-        if let Err(e) =
-            upstream_response.insert_header(HeaderName::from_static("x-simple-proxy"), "v0.1")
-        {
+        if let Err(e) = upstream_response.insert_header("x-simple-proxy", "v0.1") {
             warn!("failed to insert header: {}", e);
         }
         match upstream_response.remove_header("server") {
             Some(server) => {
-                if let Err(e) =
-                    upstream_response.insert_header(HeaderName::from_static("server"), server)
-                {
+                if let Err(e) = upstream_response.insert_header("server", server) {
                     warn!("failed to insert header: {}", e);
                 }
             }
             None => {
-                if let Err(e) = upstream_response
-                    .insert_header(HeaderName::from_static("server"), "SimpleProxy/0.1")
-                {
+                if let Err(e) = upstream_response.insert_header("server", "SimpleProxy/0.1") {
                     warn!("failed to insert header: {}", e);
                 }
             }
