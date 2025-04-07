@@ -2,7 +2,7 @@
 
 ### create a user
 
-POST http://localhost:3000/users
+POST http://localhost:8080/users
 Content-Type: application/json
 
 {
@@ -13,5 +13,5 @@ Content-Type: application/json
 
 ### list users
 
-GET http://localhost:3000/users
+GET http://localhost:8080/users
 Content-Type: application/json

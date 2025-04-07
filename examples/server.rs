@@ -1,25 +1,28 @@
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
     Argon2,
+    password_hash::{PasswordHasher, SaltString},
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use http::{Request, Response};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
-use tracing::info;
+use tower_http::trace::TraceLayer;
+use tracing::{Span, info};
 
 // User model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,7 +212,18 @@ async fn main() {
         .route("/users/{id}", put(update_user))
         .route("/users/{id}", delete(delete_user))
         .route("/health", get(health_check))
-        .with_state(app_state);
+        .with_state(app_state)
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(|request: &Request<_>, _span: &Span| {
+                    info!("request: {:?}", request.headers());
+                })
+                .on_response(
+                    |_response: &Response<_>, _latency: Duration, _span: &Span| {
+                        info!("response: {:?}", _response.headers());
+                    },
+                ),
+        );
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

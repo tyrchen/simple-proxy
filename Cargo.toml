@@ -2,7 +2,7 @@
 name = "simple-proxy"
 version = "0.1.0"
 authors = ["Tyr Chen <tyr.chen@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 documentation = "https://docs.rs/"
 repository = "https://github.com/tyrchen/simple-proxy"
@@ -16,6 +16,8 @@ keywords = []
 
 [dependencies]
 anyhow = "1.0.97"
+async-trait = "0.1.88"
+http = "1.3.1"
 pingora = { version = "0.4.0", features = ["lb", "rustls"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.44", features = ["macros", "rt-multi-thread"] }
@@ -24,11 +26,12 @@ tracing-subscriber = "0.3.19"
 
 [dev-dependencies]
 argon2 = "0.5.3"
-axum = "0.8"
+axum = { version = "0.8", features = ["http2"] }
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1"
 rand = "0.8"
 serde_json = "1.0"
+tower-http = { version = "0.6.2", features = ["trace"] }
 
 [patch.crates-io]
 sfv = { git = "https://github.com/undef1nd/sfv.git", tag = "v0.9.4" }
