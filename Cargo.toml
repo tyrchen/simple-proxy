@@ -31,6 +31,7 @@ tracing-subscriber = "0.3.19"
 [dev-dependencies]
 argon2 = "0.5.3"
 axum = { version = "0.8", features = ["http2"] }
+axum-server = { version = "0.7.2", features = ["tls-rustls"] }
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1"
 serde_json = "1.0"

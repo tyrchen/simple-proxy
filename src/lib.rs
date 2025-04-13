@@ -73,7 +73,7 @@ impl ProxyHttp for SimpleProxy {
             ));
         };
 
-        let peer = HttpPeer::new(upstream.to_string(), false, host.to_string());
+        let peer = HttpPeer::new(upstream.to_string(), server.tls, host.to_string());
         info!("upstream_peer: {}", peer.to_string());
         Ok(Box::new(peer))
     }

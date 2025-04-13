@@ -1,3 +1,4 @@
+use anyhow::Result;
 use argon2::{
     Argon2,
     password_hash::{PasswordHasher, SaltString},
@@ -8,6 +9,7 @@ use axum::{
     http::StatusCode,
     routing::{delete, get, post, put},
 };
+use axum_server::tls_rustls::RustlsConfig;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dashmap::DashMap;
@@ -209,7 +211,7 @@ async fn health_check(State(state): State<AppState>) -> Json<Health> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let args = Args::parse();
@@ -236,11 +238,16 @@ async fn main() {
                 ),
         );
 
+    let cert = include_bytes!("../fixtures/certs/api.acme.com.crt");
+    let key = include_bytes!("../fixtures/certs/api.acme.com.key");
+    let config = RustlsConfig::from_pem(cert.to_vec(), key.to_vec()).await?;
     let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    info!("Server running on http://{}", addr);
+    info!("Server running on https://{}", addr);
 
-    axum::serve(listener, app).await.unwrap();
+    axum_server::bind_rustls(addr, config)
+        .serve(app.into_make_service())
+        .await?;
+    Ok(())
 }
 
 #[cfg(test)]

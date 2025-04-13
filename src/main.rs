@@ -1,5 +1,5 @@
 use clap::Parser;
-use pingora::{listeners::tls::TlsSettings, prelude::*};
+use pingora::{listeners::tls::TlsSettings, prelude::*, server::configuration::ServerConf};
 use simple_proxy::{SimpleProxy, conf::ProxyConfigResolved};
 use std::path::PathBuf;
 use tracing::info;
@@ -29,7 +29,14 @@ fn main() -> anyhow::Result<()> {
     };
     let proxy_addr = format!("0.0.0.0:{}", config.global.port);
 
-    let mut server = Server::new(None)?;
+    let conf = {
+        let ca_file = config.global.tls.as_ref().and_then(|tls| tls.ca.clone());
+        ServerConf {
+            ca_file,
+            ..Default::default()
+        }
+    };
+    let mut server = Server::new_with_opt_and_conf(None, conf);
     server.bootstrap();
 
     let mut proxy = http_proxy_service(&server.configuration, SimpleProxy::new(config));
