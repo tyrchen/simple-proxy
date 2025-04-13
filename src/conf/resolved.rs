@@ -1,5 +1,7 @@
 use crate::conf::raw::{CertConfig, GlobalConfig, ServerConfig, SimpleProxyConfig, UpstreamConfig};
 use anyhow::{Context, Result, anyhow};
+use rand::rngs::OsRng;
+use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs;
@@ -151,6 +153,11 @@ impl ServerConfigResolved {
             .clone();
 
         Ok(ServerConfigResolved { tls, upstream })
+    }
+
+    pub fn choose(&self) -> Option<&str> {
+        let upstream = self.upstream.servers.choose(&mut OsRng);
+        upstream.map(|s| s.as_str())
     }
 }
 

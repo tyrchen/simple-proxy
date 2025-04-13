@@ -16,9 +16,12 @@ keywords = []
 
 [dependencies]
 anyhow = "1.0.97"
+arc-swap = "1.7.1"
 async-trait = "0.1.88"
+clap = { version = "4.5.36", features = ["derive"] }
 http = "1.3.1"
 pingora = { version = "0.4.0", features = ["lb", "rustls"] }
+rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9.34"
 tokio = { version = "1.44", features = ["macros", "rt-multi-thread"] }
@@ -30,7 +33,6 @@ argon2 = "0.5.3"
 axum = { version = "0.8", features = ["http2"] }
 chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1"
-rand = "0.8"
 serde_json = "1.0"
 tempfile = "3"
 tower-http = { version = "0.6.2", features = ["trace"] }

@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn test_load_sample_config() {
-        let yaml = include_str!("../../fixtures/sample.yaml");
+        let yaml = include_str!("../../fixtures/sample.yml");
         let config = SimpleProxyConfig::from_yaml_str(yaml).unwrap();
 
         assert_eq!(config.global.port, 8080);

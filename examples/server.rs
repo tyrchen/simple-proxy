@@ -9,6 +9,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use chrono::{DateTime, Utc};
+use clap::Parser;
 use dashmap::DashMap;
 use http::{Request, Response};
 use rand::rngs::OsRng;
@@ -23,6 +24,14 @@ use std::{
 };
 use tower_http::trace::TraceLayer;
 use tracing::{Span, info};
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Port to run the server on
+    #[arg(short, long, default_value_t = 3001)]
+    port: u16,
+}
 
 // User model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +212,8 @@ async fn health_check(State(state): State<AppState>) -> Json<Health> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let args = Args::parse();
+
     let app_state = AppState::new();
 
     let app = Router::new()
@@ -225,7 +236,7 @@ async fn main() {
                 ),
         );
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     info!("Server running on http://{}", addr);
 
