@@ -2,7 +2,10 @@
 global:
   port: 80
   # could be empty for no tls or specify cert name
-  tls: ~
+  tls:
+    ca: ./fixtures/certs/ca.crt
+    cert: ./fixtures/certs/wildcard.acme.com.crt
+    key: ./fixtures/certs/wildcard.acme.com.key
 
 # Server configurations
 servers:
@@ -10,11 +13,11 @@ servers:
       - acme.com
       - www.acme.com
     upstream: web_servers
-    tls: ~
+    tls: false
   - server_name:
       - api.acme.com
     upstream: api_servers
-    tls: ~
+    tls: true
 
 # Upstream server configurations
 upstreams:

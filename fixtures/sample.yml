@@ -2,19 +2,7 @@
 global:
   port: 8080
   # could be empty for no tls or specify cert name
-  tls: proxy_cert
-
-# Certificates to be used by the proxy
-certs:
-  - name: proxy_cert
-    cert_path: ./proxy/cert.pem
-    key_path: ./proxy/key.pem
-  - name: web_cert
-    cert_path: ./web/cert.pem
-    key_path: ./web/key.pem
-  - name: api_cert
-    cert_path: ./api/cert.pem
-    key_path: ./api/key.pem
+  tls: ~
 
 # Server configurations
 servers:
@@ -22,11 +10,11 @@ servers:
       - acme.com
       - www.acme.com
     upstream: web_servers
-    tls: web_cert
+    tls: false
   - server_name:
       - api.acme.com
     upstream: api_servers
-    tls: ~
+    tls: true
 
 # Upstream server configurations
 upstreams:

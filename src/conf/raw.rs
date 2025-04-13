@@ -8,10 +8,6 @@ pub struct SimpleProxyConfig {
     /// Global configuration settings
     pub global: GlobalConfig,
 
-    /// Certificate configurations
-    #[serde(default)]
-    pub certs: Vec<CertConfig>,
-
     /// Server configurations
     pub servers: Vec<ServerConfig>,
 
@@ -25,22 +21,23 @@ pub struct GlobalConfig {
     /// Port on which the proxy listens
     pub port: u16,
 
-    /// TLS certificate name reference (optional)
+    /// TLS configuration (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tls: Option<String>,
+    pub tls: Option<TlsConfig>,
 }
 
-/// Certificate configuration
+/// TLS configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CertConfig {
-    /// Certificate name used for reference
-    pub name: String,
+pub struct TlsConfig {
+    /// Path to CA certificate file (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ca: Option<PathBuf>,
 
-    /// Path to the certificate file
-    pub cert_path: PathBuf,
+    /// Path to certificate file
+    pub cert: PathBuf,
 
-    /// Path to the key file
-    pub key_path: PathBuf,
+    /// Path to key file
+    pub key: PathBuf,
 }
 
 /// Server configuration
@@ -52,9 +49,9 @@ pub struct ServerConfig {
     /// Name of the upstream server group to forward requests to
     pub upstream: String,
 
-    /// TLS certificate name reference (optional)
+    /// Whether TLS is enabled for this server
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tls: Option<String>,
+    pub tls: Option<bool>,
 }
 
 /// Upstream server configuration
@@ -99,10 +96,7 @@ mod tests {
         let config = SimpleProxyConfig::from_yaml_str(yaml).unwrap();
 
         assert_eq!(config.global.port, 8080);
-        assert_eq!(config.global.tls, Some("proxy_cert".to_string()));
-
-        assert_eq!(config.certs.len(), 3);
-        assert_eq!(config.certs[0].name, "proxy_cert");
+        assert!(config.global.tls.is_none());
 
         assert_eq!(config.servers.len(), 2);
         assert_eq!(
@@ -110,7 +104,7 @@ mod tests {
             vec!["acme.com", "www.acme.com"]
         );
         assert_eq!(config.servers[0].upstream, "web_servers");
-        assert_eq!(config.servers[0].tls, Some("web_cert".to_string()));
+        assert_eq!(config.servers[0].tls, Some(false));
 
         assert_eq!(config.upstreams.len(), 2);
         assert_eq!(config.upstreams[0].name, "web_servers");
