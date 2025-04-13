@@ -2,7 +2,7 @@
 
 ### create a user
 
-POST http://api.acme.com/users
+POST https://api.acme.com/users
 Content-Type: application/json
 
 {
@@ -13,5 +13,5 @@ Content-Type: application/json
 
 ### list users
 
-GET http://api.acme.com/users
+GET https://api.acme.com/users
 Content-Type: application/json

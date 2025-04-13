@@ -1,7 +1,7 @@
 pub mod conf;
 
 use async_trait::async_trait;
-use conf::ProxyConfig;
+use conf::{ProxyConfig, ProxyConfigResolved};
 use http::StatusCode;
 use pingora::{http::ResponseHeader, prelude::*};
 use tracing::{info, warn};
@@ -15,8 +15,10 @@ pub struct ProxyContext {
 }
 
 impl SimpleProxy {
-    pub fn new(config: ProxyConfig) -> Self {
-        Self { config }
+    pub fn new(config: ProxyConfigResolved) -> Self {
+        Self {
+            config: ProxyConfig::new(config),
+        }
     }
 
     pub fn config(&self) -> &ProxyConfig {

@@ -4,6 +4,7 @@ use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct ProxyConfigResolved {
@@ -33,6 +34,13 @@ pub struct ServerConfigResolved {
 #[derive(Debug, Clone)]
 pub struct UpstreamConfigResolved {
     pub servers: Vec<String>,
+}
+
+impl ProxyConfigResolved {
+    pub fn load(file: impl AsRef<Path>) -> Result<Self> {
+        let config = SimpleProxyConfig::from_yaml_file(file)?;
+        Self::try_from(config)
+    }
 }
 
 impl TryFrom<&TlsConfig> for TlsConfigResolved {

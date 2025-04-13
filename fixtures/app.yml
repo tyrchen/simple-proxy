@@ -1,6 +1,6 @@
 # Global configurations
 global:
-  port: 80
+  port: 443
   # could be empty for no tls or specify cert name
   tls:
     ca: ./fixtures/certs/ca.crt

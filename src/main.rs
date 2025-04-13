@@ -1,6 +1,6 @@
 use clap::Parser;
-use pingora::prelude::*;
-use simple_proxy::{SimpleProxy, conf::ProxyConfig};
+use pingora::{listeners::tls::TlsSettings, prelude::*};
+use simple_proxy::{SimpleProxy, conf::ProxyConfigResolved};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -16,17 +16,31 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let args = Args::parse();
+    let config = ProxyConfigResolved::load(args.config)?;
+    let tls_settings = {
+        match config.global.tls.as_ref() {
+            None => None,
+            Some(tls) => {
+                let mut tls_settings = TlsSettings::intermediate(&tls.cert, &tls.key)?;
+                tls_settings.enable_h2();
+                Some(tls_settings)
+            }
+        }
+    };
+    let proxy_addr = format!("0.0.0.0:{}", config.global.port);
 
     let mut server = Server::new(None)?;
     server.bootstrap();
 
-    let config = ProxyConfig::load(args.config)?;
-    let sp = SimpleProxy::new(config);
-    let port = sp.config().load().global.port;
-
-    let proxy_addr = format!("0.0.0.0:{}", port);
-    let mut proxy = http_proxy_service(&server.configuration, sp);
-    proxy.add_tcp(&proxy_addr);
+    let mut proxy = http_proxy_service(&server.configuration, SimpleProxy::new(config));
+    match tls_settings {
+        Some(tls_settings) => {
+            proxy.add_tls_with_settings(&proxy_addr, None, tls_settings);
+        }
+        None => {
+            proxy.add_tcp(&proxy_addr);
+        }
+    }
 
     info!("proxy server is running on {}", proxy_addr);
 
