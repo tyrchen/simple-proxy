@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use pingora::{http::ResponseHeader, prelude::*};
 use tracing::{info, warn};
 
+pub mod conf;
+
 pub struct SimpleProxy {}
 
 #[async_trait]
