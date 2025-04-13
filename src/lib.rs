@@ -3,7 +3,7 @@ pub mod conf;
 use async_trait::async_trait;
 use conf::{ProxyConfig, ProxyConfigResolved};
 use http::StatusCode;
-use pingora::{http::ResponseHeader, prelude::*};
+use pingora::{http::ResponseHeader, prelude::*, upstreams::peer::Peer};
 use tracing::{info, warn};
 
 pub struct SimpleProxy {
@@ -73,7 +73,10 @@ impl ProxyHttp for SimpleProxy {
             ));
         };
 
-        let peer = HttpPeer::new(upstream.to_string(), server.tls, host.to_string());
+        let mut peer = HttpPeer::new(upstream.to_string(), server.tls, host.to_string());
+        if let Some(options) = peer.get_mut_peer_options() {
+            options.set_http_version(2, 2);
+        }
         info!("upstream_peer: {}", peer.to_string());
         Ok(Box::new(peer))
     }
