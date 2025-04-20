@@ -60,8 +60,8 @@ flowchart TB
     responseFilter --> upstreamResponseBodyFilter[upstream_response_body_filter]
     upstreamResponseBodyFilter --> responseBodyFilter[response_body_filter]
     responseBodyFilter --> logging[logging]
-    logging --> end[请求结束]
-    end --> newCtx
+    logging --> endRequest[请求结束]
+    endRequest --> newCtx
 ```
 
 ## 关键过滤器详解
