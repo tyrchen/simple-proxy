@@ -1,6 +1,6 @@
 use clap::Parser;
 use pingora::{listeners::tls::TlsSettings, prelude::*, server::configuration::ServerConf};
-use simple_proxy::{SimpleProxy, conf::ProxyConfigResolved};
+use simple_proxy::{HealthService, SimpleProxy, conf::ProxyConfigResolved};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -39,7 +39,10 @@ fn main() -> anyhow::Result<()> {
     let mut server = Server::new_with_opt_and_conf(None, conf);
     server.bootstrap();
 
-    let mut proxy = http_proxy_service(&server.configuration, SimpleProxy::new(config));
+    let rp = SimpleProxy::try_new(config)?;
+    let health_service = HealthService::new(rp.route_table().clone());
+
+    let mut proxy = http_proxy_service(&server.configuration, rp);
     match tls_settings {
         Some(tls_settings) => {
             proxy.add_tls_with_settings(&proxy_addr, None, tls_settings);
@@ -52,6 +55,7 @@ fn main() -> anyhow::Result<()> {
     info!("proxy server is running on {}", proxy_addr);
 
     server.add_service(proxy);
+    server.add_service(health_service);
 
     server.run_forever();
 }

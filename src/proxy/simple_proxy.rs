@@ -1,5 +1,8 @@
-use super::{ProxyContext, SimpleProxy};
-use crate::conf::{ProxyConfig, ProxyConfigResolved};
+use super::{ProxyContext, RouteTable, SimpleProxy};
+use crate::{
+    conf::{ProxyConfig, ProxyConfigResolved},
+    get_host_port,
+};
 use async_trait::async_trait;
 use http::{StatusCode, header};
 use pingora::{
@@ -15,14 +18,20 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 impl SimpleProxy {
-    pub fn new(config: ProxyConfigResolved) -> Self {
-        Self {
+    pub fn try_new(config: ProxyConfigResolved) -> anyhow::Result<Self> {
+        let route_table = RouteTable::try_new(&config)?;
+        Ok(Self {
             config: ProxyConfig::new(config),
-        }
+            route_table,
+        })
     }
 
     pub fn config(&self) -> &ProxyConfig {
         &self.config
+    }
+
+    pub fn route_table(&self) -> &RouteTable {
+        &self.route_table
     }
 }
 
@@ -34,29 +43,35 @@ impl ProxyHttp for SimpleProxy {
         info!("new_ctx");
         ProxyContext {
             config: self.config.clone(),
+            route_entry: None,
+            host: "".to_string(),
+            port: 80,
         }
+    }
+
+    async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
+        info!("request_filter");
+
+        let (host, port) = get_host_port(
+            session.get_header(http::header::HOST),
+            &session.req_header().uri,
+        );
+
+        let route_table = self.route_table.pin();
+        let route_entry = route_table.get(host);
+        ctx.route_entry = route_entry.cloned();
+        ctx.host = host.to_string();
+        ctx.port = port;
+
+        Ok(false)
     }
 
     async fn upstream_peer(
         &self,
-        session: &mut Session,
+        _session: &mut Session,
         ctx: &mut Self::CTX,
     ) -> Result<Box<HttpPeer>> {
-        let config = ctx.config.load();
-        let Some(host) = session
-            .get_header(http::header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .map(|h| h.split(':').next().unwrap_or(h))
-        else {
-            return Err(Error::create(
-                ErrorType::CustomCode("No valid host found", StatusCode::BAD_REQUEST.into()),
-                ErrorSource::Downstream,
-                None,
-                None,
-            ));
-        };
-
-        let Some(server) = config.servers.get(host) else {
+        let Some(route_entry) = ctx.route_entry.as_ref() else {
             return Err(Error::create(
                 ErrorType::HTTPStatus(StatusCode::NOT_FOUND.into()),
                 ErrorSource::Upstream,
@@ -65,16 +80,16 @@ impl ProxyHttp for SimpleProxy {
             ));
         };
 
-        let Some(upstream) = server.choose() else {
+        let Some(upstream) = route_entry.select() else {
             return Err(Error::create(
-                ErrorType::HTTPStatus(StatusCode::NOT_FOUND.into()),
+                ErrorType::HTTPStatus(StatusCode::BAD_GATEWAY.into()),
                 ErrorSource::Upstream,
                 None,
                 None,
             ));
         };
 
-        let mut peer = HttpPeer::new(upstream.to_string(), server.tls, host.to_string());
+        let mut peer = HttpPeer::new(upstream, route_entry.tls, ctx.host.clone());
         if let Some(options) = peer.get_mut_peer_options() {
             options.set_http_version(2, 2);
         }
@@ -118,11 +133,6 @@ impl ProxyHttp for SimpleProxy {
                 }
             }
         }
-    }
-
-    async fn request_filter(&self, _session: &mut Session, _ctx: &mut Self::CTX) -> Result<bool> {
-        info!("request_filter");
-        Ok(false)
     }
 
     fn init_downstream_modules(&self, modules: &mut HttpModules) {

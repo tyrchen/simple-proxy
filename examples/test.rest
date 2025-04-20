@@ -15,3 +15,7 @@ Content-Type: application/json
 
 GET https://api.acme.com/users
 Content-Type: application/json
+
+### acme web
+
+GET https://www.acme.com/
