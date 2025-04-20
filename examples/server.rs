@@ -5,15 +5,17 @@ use argon2::{
 };
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::StatusCode,
+    middleware::{Next, from_fn_with_state},
+    response::Response,
     routing::{delete, get, post, put},
 };
 use axum_server::tls_rustls::RustlsConfig;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dashmap::DashMap;
-use http::{Request, Response};
+use http::HeaderValue;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -72,15 +74,17 @@ struct AppStateInner {
     next_id: AtomicU64,
     users: DashMap<u64, User>,
     argon2: Argon2<'static>,
+    addr: SocketAddr,
 }
 
 impl AppState {
-    fn new() -> Self {
+    fn new(addr: impl Into<SocketAddr>) -> Self {
         Self {
             inner: Arc::new(AppStateInner {
                 next_id: AtomicU64::new(1),
                 users: DashMap::new(),
                 argon2: Argon2::default(),
+                addr: addr.into(),
             }),
         }
     }
@@ -210,13 +214,25 @@ async fn health_check(State(state): State<AppState>) -> Json<Health> {
     })
 }
 
+async fn server_info(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+
+    response.headers_mut().insert(
+        "X-Server-Info",
+        HeaderValue::from_str(&format!("{}", state.inner.addr)).unwrap(),
+    );
+
+    response
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let args = Args::parse();
+    let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
 
-    let app_state = AppState::new();
+    let app_state = AppState::new(addr);
 
     let app = Router::new()
         .route("/users/{id}", get(get_user))
@@ -225,6 +241,7 @@ async fn main() -> Result<()> {
         .route("/users/{id}", put(update_user))
         .route("/users/{id}", delete(delete_user))
         .route("/health", get(health_check))
+        .route_layer(from_fn_with_state(app_state.clone(), server_info))
         .with_state(app_state)
         .layer(
             TraceLayer::new_for_http()
@@ -241,7 +258,6 @@ async fn main() -> Result<()> {
     let cert = include_bytes!("../fixtures/certs/api.acme.com.crt");
     let key = include_bytes!("../fixtures/certs/api.acme.com.key");
     let config = RustlsConfig::from_pem(cert.to_vec(), key.to_vec()).await?;
-    let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
     info!("Server running on https://{}", addr);
 
     axum_server::bind_rustls(addr, config)
@@ -265,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_create_user() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         let user = create_test_user(&state, "test@example.com");
 
         assert_eq!(user.email, "test@example.com");
@@ -276,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_get_user() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         let created_user = create_test_user(&state, "test@example.com");
 
         let retrieved_user = state.get_user(created_user.id).unwrap();
@@ -289,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_update_user() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         let user = create_test_user(&state, "test@example.com");
 
         let update = UpdateUser {
@@ -318,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_delete_user() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         let user = create_test_user(&state, "test@example.com");
 
         let deleted_user = state.delete_user(user.id).unwrap();
@@ -330,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_list_users() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         let user1 = create_test_user(&state, "test1@example.com");
         let user2 = create_test_user(&state, "test2@example.com");
 
@@ -344,13 +360,13 @@ mod tests {
 
     #[test]
     fn test_health() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         assert!(state.health());
     }
 
     #[test]
     fn test_password_hashing() {
-        let state = AppState::new();
+        let state = AppState::new("127.0.0.1:3001");
         let user1 = create_test_user(&state, "test1@example.com");
         let user2 = create_test_user(&state, "test2@example.com");
 
