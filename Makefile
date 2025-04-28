@@ -46,4 +46,19 @@ release:
 update-submodule:
 	@git submodule update --init --recursive --remote
 
-.PHONY: build test release update-submodule certs
+compile-plugins:
+	@echo "Compiling all plugins under examples/plugins..."
+	@mkdir -p fixtures/plugins
+	@for dir in examples/plugins/*/; do \
+		if [ -d "$$dir" ]; then \
+			echo "Compiling $$(basename $$dir)..."; \
+			cd "$$dir" && cargo build --target wasm32-wasip1 --release; \
+			cd - > /dev/null; \
+		fi \
+	done
+	@echo "Copying compiled plugins to fixtures/plugins..."
+	@cp ~/.target/wasm32-wasip1/release/*.wasm fixtures/plugins/;
+	@echo "Plugin compilation complete."
+
+
+.PHONY: build test release update-submodule certs compile-plugins

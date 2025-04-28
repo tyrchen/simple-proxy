@@ -228,6 +228,9 @@ async fn server_info(State(state): State<AppState>, request: Request, next: Next
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .unwrap();
 
     let args = Args::parse();
     let addr = SocketAddr::from(([127, 0, 0, 1], args.port));

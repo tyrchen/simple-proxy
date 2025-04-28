@@ -14,6 +14,9 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .unwrap();
 
     let args = Args::parse();
     let config = ProxyConfigResolved::load(args.config)?;

@@ -29,3 +29,11 @@ upstreams:
     servers:
       - 127.0.0.1:3003
       - 127.0.0.1:3004
+
+# Plugin configurations (Optional)
+plugins:
+  - name: "Example Request Modifier"
+    # Path relative to the project root where simple-proxy binary runs
+    path: "./fixtures/plugins/example_request_modifier.wasm"
+    enabled: true
+    execution_points: ["request_headers"]

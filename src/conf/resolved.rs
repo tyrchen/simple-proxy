@@ -1,4 +1,5 @@
 use crate::conf::raw::{GlobalConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
+use crate::plugins::PluginConfig;
 use anyhow::{Result, anyhow};
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
@@ -10,6 +11,7 @@ use std::path::Path;
 pub struct ProxyConfigResolved {
     pub global: GlobalConfigResolved,
     pub servers: HashMap<String, ServerConfigResolved>,
+    pub plugins: Option<Vec<PluginConfig>>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +116,11 @@ impl TryFrom<SimpleProxyConfig> for ProxyConfigResolved {
             }
         }
 
-        Ok(ProxyConfigResolved { global, servers })
+        Ok(ProxyConfigResolved {
+            global,
+            servers,
+            plugins: raw.plugins,
+        })
     }
 }
 
@@ -380,6 +386,7 @@ mod tests {
             global: global_config,
             servers: server_configs,
             upstreams: upstream_configs,
+            plugins: None,
         };
 
         // Convert to resolved
@@ -486,6 +493,7 @@ mod tests {
             global: global_config,
             servers: server_configs,
             upstreams: upstream_configs,
+            plugins: None,
         };
 
         // Try to convert to resolved

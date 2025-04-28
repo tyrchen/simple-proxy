@@ -1,5 +1,6 @@
 use super::{ProxyContext, RouteTable, SimpleProxy};
 use crate::{
+    PluginManager,
     conf::{ProxyConfig, ProxyConfigResolved},
     get_host_port,
 };
@@ -15,14 +16,34 @@ use pingora::{
     upstreams::peer::Peer,
 };
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 impl SimpleProxy {
     pub fn try_new(config: ProxyConfigResolved) -> anyhow::Result<Self> {
         let route_table = RouteTable::try_new(&config)?;
+        let plugin_manager = PluginManager::new();
+
+        // Load plugins from configuration
+        if let Some(plugin_configs) = &config.plugins {
+            for plugin_config in plugin_configs {
+                if plugin_config.enabled {
+                    // Clone the config for the manager
+                    if let Err(e) = plugin_manager.load_plugin(plugin_config.clone()) {
+                        // Log error but continue loading other plugins?
+                        // Or fail hard?
+                        // Let's log and continue for now.
+                        warn!("Failed to load plugin '{}': {}", plugin_config.name, e);
+                    } else {
+                        info!("Successfully loaded plugin: {}", plugin_config.name);
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             config: ProxyConfig::new(config),
             route_table,
+            plugin_manager, // Use the manager with loaded plugins
         })
     }
 
@@ -46,6 +67,7 @@ impl ProxyHttp for SimpleProxy {
             route_entry: None,
             host: "".to_string(),
             port: 80,
+            plugin_manager: self.plugin_manager.clone(),
         }
     }
 
@@ -101,13 +123,37 @@ impl ProxyHttp for SimpleProxy {
         &self,
         _session: &mut Session,
         upstream_request: &mut RequestHeader,
-        _ctx: &mut Self::CTX,
+        ctx: &mut Self::CTX,
     ) -> Result<()>
     where
         Self::CTX: Send + Sync,
     {
-        info!("upstream_request_filter: {:?}", upstream_request);
+        info!(
+            "upstream_request_filter: original headers = {:?}",
+            upstream_request.headers
+        );
+
+        // >>> Execute Request Plugins <<<
+        match ctx
+            .plugin_manager
+            .execute_request_plugins(upstream_request)
+            .await
+        {
+            Ok(_) => {
+                info!(
+                    "Request plugins executed successfully. Modified headers: {:?}",
+                    upstream_request.headers
+                );
+            }
+            Err(e) => {
+                error!("Error executing request plugins: {}", e);
+            }
+        }
+        // >>> End Plugin Execution <<<
+
+        // Original logic (can be modified/removed by plugins now)
         upstream_request.insert_header("user-agent", "SimpleProxy/0.1")?;
+
         Ok(())
     }
 
@@ -234,9 +280,38 @@ impl ProxyHttp for SimpleProxy {
         &self,
         _session: &mut Session,
         upstream_response: &mut ResponseHeader,
-        _ctx: &mut Self::CTX,
+        ctx: &mut Self::CTX,
     ) -> Result<()> {
-        info!("response_filter: headers={:?}", upstream_response);
+        info!(
+            "response_filter: original headers = {:?}",
+            upstream_response.headers
+        );
+
+        // >>> Execute Response Plugins <<<
+        match ctx
+            .plugin_manager
+            .execute_response_plugins(upstream_response)
+        {
+            Ok(_) => {
+                info!(
+                    "Response plugins executed successfully. Modified headers: {:?}",
+                    upstream_response.headers
+                );
+            }
+            Err(e) => {
+                error!("Error executing response plugins: {}", e);
+            }
+        }
+        // >>> End Plugin Execution <<<
+
+        // Original logic can be modified by plugins
+        // Example: A plugin might have already set x-simple-proxy
+        if !upstream_response.headers.contains_key("x-simple-proxy") {
+            if let Err(e) = upstream_response.insert_header("x-simple-proxy", "v0.1") {
+                warn!("failed to insert default x-simple-proxy header: {}", e);
+            }
+        }
+
         Ok(())
     }
 
