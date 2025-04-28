@@ -1,5 +1,7 @@
+use crate::plugins::PluginConfig;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// The main configuration struct for Simple Proxy
@@ -13,6 +15,10 @@ pub struct SimpleProxyConfig {
 
     /// Upstream server configurations
     pub upstreams: Vec<UpstreamConfig>,
+
+    /// Plugin configurations
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<Vec<PluginConfig>>,
 }
 
 /// Global configuration settings

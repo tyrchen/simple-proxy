@@ -1,6 +1,6 @@
 use crate::plugins::{
-    Plugin, PluginConfig, PluginError, PluginExecutionPoint, PluginInterface, PluginRegistry,
-    PluginRequest, PluginResponse, PluginResult,
+    Plugin, PluginConfig, PluginError, PluginExecutionPoint,
+    /* PluginInterface, */ PluginRegistry, PluginRequest, PluginResponse, PluginResult,
 };
 use extism::{Manifest, Plugin as ExtismPlugin, Wasm};
 use serde_json::json;
@@ -103,6 +103,8 @@ impl PluginManager {
         }
 
         // Execute the appropriate function based on the execution point
+        // TODO: Refactor this match block to use the new interface.rs structs and extism calls directly.
+        /*
         match execution_point {
             PluginExecutionPoint::RequestHeaders => plugin.process_request_headers(request),
             PluginExecutionPoint::RequestBody => plugin.process_request_body(request),
@@ -126,6 +128,9 @@ impl PluginManager {
                 }
             },
         }
+        */
+        // Placeholder: Return an empty response for now to allow compilation
+        Ok(PluginResponse::new())
     }
 
     /// Remove a plugin by name
@@ -143,7 +148,8 @@ impl PluginManager {
     }
 }
 
-// Implement PluginInterface for Plugin
+// Implement PluginInterface for Plugin - TODO: Refactor this section based on new interface.rs
+/*
 impl PluginInterface for Plugin {
     fn process_request_headers(&mut self, request: &PluginRequest) -> PluginResult<PluginResponse> {
         let function_name = PluginExecutionPoint::RequestHeaders.function_name();
@@ -214,32 +220,27 @@ impl PluginInterface for Plugin {
         let instance = &mut self.instance;
         if !instance.function_exists(function_name) {
             debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(response.clone());
+            return Ok(PluginResponse::new()); // Assuming a default no-op response
         }
 
-        // Create a combined input with request and response
-        let input = json!({
-            "request": request,
-            "response": response
-        });
-
-        // Serialize input
-        let input_json = serde_json::to_string(&input)?;
-
-        // Get bytes from the JSON string
+        // Serialize request and response together or separately?
+        // Let's pass them as a tuple for now.
+        let input_data = (request, response);
+        let input_json = serde_json::to_string(&input_data)?;
         let input_bytes = input_json.as_bytes();
 
-        // Call the plugin function with explicit type
+        // Call the plugin function
         let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
 
-        // Parse the response
-        let result_response: PluginResponse = if !result.is_empty() {
+        // Parse the modified response
+        let response: PluginResponse = if !result.is_empty() {
             serde_json::from_slice(&result)?
         } else {
+            // If plugin returns empty, assume no changes
             response.clone()
         };
 
-        Ok(result_response)
+        Ok(response)
     }
 
     fn process_response_body(
@@ -253,32 +254,25 @@ impl PluginInterface for Plugin {
         let instance = &mut self.instance;
         if !instance.function_exists(function_name) {
             debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(response.clone());
+            return Ok(PluginResponse::new()); // Assuming a default no-op response
         }
 
-        // Create a combined input with request and response
-        let input = json!({
-            "request": request,
-            "response": response
-        });
-
-        // Serialize input
-        let input_json = serde_json::to_string(&input)?;
-
-        // Get bytes from the JSON string
+        // Serialize request and response
+        let input_data = (request, response);
+        let input_json = serde_json::to_string(&input_data)?;
         let input_bytes = input_json.as_bytes();
 
-        // Call the plugin function with explicit type
+        // Call the plugin function
         let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
 
-        // Parse the response
-        let result_response: PluginResponse = if !result.is_empty() {
+        // Parse the modified response
+        let response: PluginResponse = if !result.is_empty() {
             serde_json::from_slice(&result)?
         } else {
             response.clone()
         };
 
-        Ok(result_response)
+        Ok(response)
     }
 
     fn generate_response(
@@ -294,22 +288,21 @@ impl PluginInterface for Plugin {
             return Ok(None);
         }
 
-        // Serialize the request
+        // Serialize request
         let input_json = serde_json::to_string(request)?;
-
-        // Get bytes from the JSON string
         let input_bytes = input_json.as_bytes();
 
-        // Call the plugin function with explicit type
+        // Call the plugin function
         let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
 
-        // Empty response means no response generated
-        if result.is_empty() {
-            return Ok(None);
-        }
+        // Parse the optional response
+        let response: Option<PluginResponse> = if !result.is_empty() {
+            Some(serde_json::from_slice(&result)?)
+        } else {
+            None
+        };
 
-        // Parse the response
-        let response: PluginResponse = serde_json::from_slice(&result)?;
-        Ok(Some(response))
+        Ok(response)
     }
 }
+*/

@@ -1,13 +1,12 @@
 mod config;
 mod error;
-mod interface;
+pub mod interface;
 mod manager;
 mod registry;
 mod types;
 
 pub use config::{PluginConfig, PluginExecutionPoint};
 pub use error::{PluginError, PluginResult};
-pub use interface::PluginInterface;
 pub use manager::PluginManager;
 pub use registry::PluginRegistry;
 pub use types::{PluginRequest, PluginResponse};

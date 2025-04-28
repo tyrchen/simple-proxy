@@ -1,5 +1,6 @@
 use super::{ProxyContext, RouteTable, SimpleProxy};
 use crate::{
+    PluginManager,
     conf::{ProxyConfig, ProxyConfigResolved},
     get_host_port,
 };
@@ -23,6 +24,7 @@ impl SimpleProxy {
         Ok(Self {
             config: ProxyConfig::new(config),
             route_table,
+            plugin_manager: PluginManager::new(),
         })
     }
 
@@ -46,6 +48,7 @@ impl ProxyHttp for SimpleProxy {
             route_entry: None,
             host: "".to_string(),
             port: 80,
+            plugin_manager: self.plugin_manager.clone(),
         }
     }
 
