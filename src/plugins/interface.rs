@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Interface for plugins with different execution points
+#[allow(unused)]
 pub trait PluginInterface {
     /// Process request headers
     ///
