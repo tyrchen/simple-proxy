@@ -1,10 +1,13 @@
 use crate::plugins::{
-    Plugin, PluginConfig, PluginError, PluginExecutionPoint,
-    /* PluginInterface, */ PluginRegistry, PluginRequest, PluginResponse, PluginResult,
+    Plugin,
+    config::PluginConfig,
+    error::{PluginError, PluginResult},
+    interface::*,
+    registry::PluginRegistry,
 };
 use extism::{Manifest, Plugin as ExtismPlugin, Wasm};
-use serde_json::json;
-use tracing::{debug, info};
+use pingora::http::{RequestHeader, ResponseHeader};
+use tracing::{debug, error, info, warn};
 
 /// Manager for plugin operations
 #[derive(Debug, Clone, Default)]
@@ -80,57 +83,222 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Execute a plugin at a specific execution point
-    pub async fn execute_plugin(
+    /// Execute relevant plugins for the request phase.
+    pub async fn execute_request_plugins(
         &self,
-        plugin_name: &str,
-        execution_point: PluginExecutionPoint,
-        request: &PluginRequest,
-        response: Option<&PluginResponse>,
-    ) -> PluginResult<PluginResponse> {
-        // Get the plugin from the registry
-        let mut plugin = self
-            .registry
-            .get_mut(plugin_name)
-            .ok_or_else(|| PluginError::NotFound(plugin_name.to_string()))?;
+        request_header: &mut RequestHeader,
+    ) -> PluginResult<()> {
+        // TODO: Get configured plugins for the request phase from config
+        let relevant_plugin_names: Vec<String> = vec![]; // Placeholder
 
-        // Check if the plugin should execute at this point
-        if !plugin.config.execution_points.contains(&execution_point) {
-            return Err(PluginError::Execution(format!(
-                "Plugin {} does not execute at point {:?}",
-                plugin_name, execution_point
-            )));
-        }
+        for plugin_name in relevant_plugin_names {
+            if let Some(mut plugin_instance) = self.registry.get_mut(&plugin_name) {
+                if plugin_instance
+                    .instance
+                    .function_exists(REQUEST_FUNCTION_NAME)
+                {
+                    debug!("Executing request plugin: {}", plugin_name);
 
-        // Execute the appropriate function based on the execution point
-        // TODO: Refactor this match block to use the new interface.rs structs and extism calls directly.
-        /*
-        match execution_point {
-            PluginExecutionPoint::RequestHeaders => plugin.process_request_headers(request),
-            PluginExecutionPoint::RequestBody => plugin.process_request_body(request),
-            PluginExecutionPoint::ResponseHeaders => {
-                let response = response.ok_or_else(|| {
-                    PluginError::Execution("Response required for ResponseHeaders".to_string())
-                })?;
-                plugin.process_response_headers(request, response)
-            }
-            PluginExecutionPoint::ResponseBody => {
-                let response = response.ok_or_else(|| {
-                    PluginError::Execution("Response required for ResponseBody".to_string())
-                })?;
-                plugin.process_response_body(request, response)
-            }
-            PluginExecutionPoint::GenerateResponse => match plugin.generate_response(request)? {
-                Some(resp) => Ok(resp),
-                None => {
-                    // Return empty response if plugin doesn't want to generate one
-                    Ok(PluginResponse::new())
+                    // 1. Prepare input data
+                    let input_data = PluginRequestData {
+                        method: request_header.method.to_string(),
+                        uri: request_header.uri.to_string(),
+                        version: format!("{:?}", request_header.version),
+                        headers: JsonHeaderMap::from(&request_header.headers),
+                        body: None, // TODO: Handle request body
+                    };
+                    let input_json = match serde_json::to_string(&input_data) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            warn!(
+                                "Failed to serialize request data for plugin {}: {}",
+                                plugin_name, e
+                            );
+                            continue; // Skip this plugin
+                        }
+                    };
+
+                    // 2. Call plugin (synchronous)
+                    match plugin_instance
+                        .instance
+                        .call::<&str, String>(REQUEST_FUNCTION_NAME, &input_json)
+                    {
+                        Ok(output_json) => {
+                            if output_json.is_empty() || output_json == "{}" {
+                                debug!(
+                                    "Plugin {} returned empty response, no changes.",
+                                    plugin_name
+                                );
+                                continue;
+                            }
+                            // 3. Deserialize response
+                            match serde_json::from_str::<PluginModifiedRequest>(&output_json) {
+                                Ok(mods) => {
+                                    // 4. Apply modifications
+                                    if let Err(e) = self.apply_request_mods(request_header, mods) {
+                                        warn!(
+                                            "Failed to apply mods from plugin {}: {}",
+                                            plugin_name, e
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to deserialize response from plugin {}: {}\nResponse: {}",
+                                        plugin_name, e, output_json
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error executing plugin {}: {}", plugin_name, e);
+                            // Decide whether to continue or halt processing
+                        }
+                    }
                 }
-            },
+            }
         }
-        */
-        // Placeholder: Return an empty response for now to allow compilation
-        Ok(PluginResponse::new())
+        Ok(())
+    }
+
+    // Helper to apply request modifications
+    fn apply_request_mods(
+        &self,
+        req: &mut RequestHeader,
+        mods: PluginModifiedRequest,
+    ) -> Result<(), anyhow::Error> {
+        if mods.method.is_some() {
+            warn!(
+                "Plugin requested method modification, but it's not supported directly on RequestHeader."
+            );
+        }
+        if mods.uri.is_some() {
+            warn!(
+                "Plugin requested URI modification, but it's not supported directly on RequestHeader."
+            );
+        }
+        if let Some(headers_to_remove) = mods.headers_to_remove {
+            for name in headers_to_remove {
+                let _ = req.remove_header(&name);
+            }
+        }
+        if let Some(headers_to_add) = mods.headers_to_add {
+            let new_headers: http::HeaderMap = headers_to_add.try_into()?;
+            for (name, value) in new_headers.iter() {
+                req.insert_header(name.clone(), value.clone())?;
+            }
+        }
+        if mods.body.is_some() {
+            warn!("Plugin requested body modification, but it's not implemented yet.");
+        }
+        Ok(())
+    }
+
+    /// Execute relevant plugins for the response phase.
+    pub fn execute_response_plugins(
+        &self,
+        response_header: &mut ResponseHeader,
+    ) -> PluginResult<()> {
+        // TODO: Get configured plugins for the response phase from config
+        let relevant_plugin_names: Vec<String> = vec![]; // Placeholder
+
+        for plugin_name in relevant_plugin_names {
+            if let Some(mut plugin_instance) = self.registry.get_mut(&plugin_name) {
+                if plugin_instance
+                    .instance
+                    .function_exists(RESPONSE_FUNCTION_NAME)
+                {
+                    debug!("Executing response plugin: {}", plugin_name);
+
+                    // 1. Prepare input data
+                    let input_data = PluginResponseData {
+                        status: response_header.status.as_u16(),
+                        version: format!("{:?}", response_header.version),
+                        headers: JsonHeaderMap::from(&response_header.headers),
+                        body: None, // TODO: Handle response body
+                    };
+                    let input_json = match serde_json::to_string(&input_data) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            warn!(
+                                "Failed to serialize response data for plugin {}: {}",
+                                plugin_name, e
+                            );
+                            continue;
+                        }
+                    };
+
+                    // 2. Call plugin (synchronous)
+                    match plugin_instance
+                        .instance
+                        .call::<&str, String>(RESPONSE_FUNCTION_NAME, &input_json)
+                    {
+                        Ok(output_json) => {
+                            if output_json.is_empty() || output_json == "{}" {
+                                debug!(
+                                    "Plugin {} returned empty response, no changes.",
+                                    plugin_name
+                                );
+                                continue;
+                            }
+                            // 3. Deserialize response
+                            match serde_json::from_str::<PluginModifiedResponse>(&output_json) {
+                                Ok(mods) => {
+                                    // 4. Apply modifications
+                                    if let Err(e) = self.apply_response_mods(response_header, mods)
+                                    {
+                                        warn!(
+                                            "Failed to apply mods from plugin {}: {}",
+                                            plugin_name, e
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to deserialize response from plugin {}: {}\nResponse: {}",
+                                        plugin_name, e, output_json
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error executing plugin {}: {}", plugin_name, e);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Helper to apply response modifications
+    fn apply_response_mods(
+        &self,
+        resp: &mut ResponseHeader,
+        mods: PluginModifiedResponse,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(new_status_code) = mods.status {
+            let new_status =
+                pingora::http::StatusCode::from_u16(new_status_code).map_err(|_| {
+                    anyhow::anyhow!("Invalid status code {} from plugin", new_status_code)
+                })?;
+            resp.set_status(new_status)?;
+        }
+        if let Some(headers_to_remove) = mods.headers_to_remove {
+            for name in headers_to_remove {
+                let _ = resp.remove_header(&name);
+            }
+        }
+        if let Some(headers_to_add) = mods.headers_to_add {
+            let new_headers: http::HeaderMap = headers_to_add.try_into()?;
+            for (name, value) in new_headers.iter() {
+                resp.insert_header(name.clone(), value.clone())?;
+            }
+        }
+        if mods.body.is_some() {
+            warn!("Plugin requested body modification, but it's not implemented yet.");
+        }
+        Ok(())
     }
 
     /// Remove a plugin by name
@@ -147,162 +315,3 @@ impl PluginManager {
         self.registry.get(name).is_some()
     }
 }
-
-// Implement PluginInterface for Plugin - TODO: Refactor this section based on new interface.rs
-/*
-impl PluginInterface for Plugin {
-    fn process_request_headers(&mut self, request: &PluginRequest) -> PluginResult<PluginResponse> {
-        let function_name = PluginExecutionPoint::RequestHeaders.function_name();
-
-        // Skip if function doesn't exist in plugin
-        let instance = &mut self.instance;
-        if !instance.function_exists(function_name) {
-            debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(PluginResponse::new());
-        }
-
-        // Create a serialized input
-        let input_json = serde_json::to_string(request)?;
-
-        // Get bytes from the JSON string
-        let input_bytes = input_json.as_bytes();
-
-        // Call the plugin function with explicit type
-        let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
-
-        // Parse the response
-        let response: PluginResponse = if !result.is_empty() {
-            serde_json::from_slice(&result)?
-        } else {
-            PluginResponse::new()
-        };
-
-        Ok(response)
-    }
-
-    fn process_request_body(&mut self, request: &PluginRequest) -> PluginResult<PluginResponse> {
-        let function_name = PluginExecutionPoint::RequestBody.function_name();
-
-        // Skip if function doesn't exist in plugin
-        let instance = &mut self.instance;
-        if !instance.function_exists(function_name) {
-            debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(PluginResponse::new());
-        }
-
-        // Create a serialized input
-        let input_json = serde_json::to_string(request)?;
-
-        // Get bytes from the JSON string
-        let input_bytes = input_json.as_bytes();
-
-        // Call the plugin function with explicit type
-        let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
-
-        // Parse the response
-        let response: PluginResponse = if !result.is_empty() {
-            serde_json::from_slice(&result)?
-        } else {
-            PluginResponse::new()
-        };
-
-        Ok(response)
-    }
-
-    fn process_response_headers(
-        &mut self,
-        request: &PluginRequest,
-        response: &PluginResponse,
-    ) -> PluginResult<PluginResponse> {
-        let function_name = PluginExecutionPoint::ResponseHeaders.function_name();
-
-        // Skip if function doesn't exist in plugin
-        let instance = &mut self.instance;
-        if !instance.function_exists(function_name) {
-            debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(PluginResponse::new()); // Assuming a default no-op response
-        }
-
-        // Serialize request and response together or separately?
-        // Let's pass them as a tuple for now.
-        let input_data = (request, response);
-        let input_json = serde_json::to_string(&input_data)?;
-        let input_bytes = input_json.as_bytes();
-
-        // Call the plugin function
-        let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
-
-        // Parse the modified response
-        let response: PluginResponse = if !result.is_empty() {
-            serde_json::from_slice(&result)?
-        } else {
-            // If plugin returns empty, assume no changes
-            response.clone()
-        };
-
-        Ok(response)
-    }
-
-    fn process_response_body(
-        &mut self,
-        request: &PluginRequest,
-        response: &PluginResponse,
-    ) -> PluginResult<PluginResponse> {
-        let function_name = PluginExecutionPoint::ResponseBody.function_name();
-
-        // Skip if function doesn't exist in plugin
-        let instance = &mut self.instance;
-        if !instance.function_exists(function_name) {
-            debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(PluginResponse::new()); // Assuming a default no-op response
-        }
-
-        // Serialize request and response
-        let input_data = (request, response);
-        let input_json = serde_json::to_string(&input_data)?;
-        let input_bytes = input_json.as_bytes();
-
-        // Call the plugin function
-        let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
-
-        // Parse the modified response
-        let response: PluginResponse = if !result.is_empty() {
-            serde_json::from_slice(&result)?
-        } else {
-            response.clone()
-        };
-
-        Ok(response)
-    }
-
-    fn generate_response(
-        &mut self,
-        request: &PluginRequest,
-    ) -> PluginResult<Option<PluginResponse>> {
-        let function_name = PluginExecutionPoint::GenerateResponse.function_name();
-
-        // Skip if function doesn't exist in plugin
-        let instance = &mut self.instance;
-        if !instance.function_exists(function_name) {
-            debug!("Plugin {} does not implement {}", self.name, function_name);
-            return Ok(None);
-        }
-
-        // Serialize request
-        let input_json = serde_json::to_string(request)?;
-        let input_bytes = input_json.as_bytes();
-
-        // Call the plugin function
-        let result = instance.call::<&[u8], Vec<u8>>(function_name, input_bytes)?;
-
-        // Parse the optional response
-        let response: Option<PluginResponse> = if !result.is_empty() {
-            Some(serde_json::from_slice(&result)?)
-        } else {
-            None
-        };
-
-        Ok(response)
-    }
-}
-*/
