@@ -21,10 +21,29 @@ use tracing::{error, info, warn};
 impl SimpleProxy {
     pub fn try_new(config: ProxyConfigResolved) -> anyhow::Result<Self> {
         let route_table = RouteTable::try_new(&config)?;
+        let plugin_manager = PluginManager::new();
+
+        // Load plugins from configuration
+        if let Some(plugin_configs) = &config.plugins {
+            for plugin_config in plugin_configs {
+                if plugin_config.enabled {
+                    // Clone the config for the manager
+                    if let Err(e) = plugin_manager.load_plugin(plugin_config.clone()) {
+                        // Log error but continue loading other plugins?
+                        // Or fail hard?
+                        // Let's log and continue for now.
+                        warn!("Failed to load plugin '{}': {}", plugin_config.name, e);
+                    } else {
+                        info!("Successfully loaded plugin: {}", plugin_config.name);
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             config: ProxyConfig::new(config),
             route_table,
-            plugin_manager: PluginManager::new(),
+            plugin_manager, // Use the manager with loaded plugins
         })
     }
 

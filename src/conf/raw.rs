@@ -1,7 +1,6 @@
 use crate::plugins::PluginConfig;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// The main configuration struct for Simple Proxy
