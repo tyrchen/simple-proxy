@@ -1,0 +1,24 @@
+[package]
+name = "example-request-modifier"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+extism-pdk = "1.4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_bytes = "0.11"
+# Using http crate for convenience in defining header maps internally
+http = "1.1"
+# Need HashMap for headers
+fnv = "1.0.7" # Or use std::collections::HashMap
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"

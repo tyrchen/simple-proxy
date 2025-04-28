@@ -26,3 +26,12 @@ upstreams:
     servers:
       - 127.0.0.1:3003
       - 127.0.0.1:3004
+
+# Plugin configurations (Optional)
+plugins:
+  - name: "Request Header Adder"
+    path: "examples/plugins/example-request-modifier/target/wasm32-wasip1/release/example_request_modifier.wasm"
+    enabled: true
+    execution_points: ["request_headers"] # Run before request headers are sent upstream
+    # config: # Optional plugin-specific config
+    #   some_key: "some_value"
