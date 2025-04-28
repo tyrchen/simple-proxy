@@ -34,6 +34,6 @@ upstreams:
 plugins:
   - name: "Example Request Modifier"
     # Path relative to the project root where simple-proxy binary runs
-    path: "./fixtures/example_request_modifier.wasm"
+    path: "./fixtures/plugins/example_request_modifier.wasm"
     enabled: true
     execution_points: ["request_headers"]

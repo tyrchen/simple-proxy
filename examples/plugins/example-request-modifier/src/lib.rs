@@ -58,7 +58,7 @@ pub fn on_request(input: String) -> FnResult<String> {
     let mut headers_to_add = HashMap::new();
     headers_to_add.insert(
         "x-plugin-request-processed".to_string(),
-        vec!["true".to_string()],
+        vec!["1".to_string()],
     );
 
     let mods = PluginModifiedRequest {
