@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::conf::ProxyConfig;
 use crate::plugins::PluginManager;
+use bytes::BytesMut;
 use papaya::HashMap;
 use pingora::{lb::LoadBalancer, prelude::RoundRobin};
 
@@ -22,6 +23,8 @@ pub struct ProxyContext {
     pub(crate) host: String,
     pub(crate) port: u16,
     pub(crate) plugin_manager: PluginManager,
+    pub(crate) resp_content_type: Option<String>,
+    pub(crate) resp_body: Option<BytesMut>,
 }
 
 #[derive(Clone)]
