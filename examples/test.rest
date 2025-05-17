@@ -14,7 +14,11 @@ Content-Type: application/json
 ### list users
 
 GET https://api.acme.com/users
-Content-Type: application/json
+Host: api.acme.com
+
+### List users (original server)
+
+GET https://localhost:3001/users
 
 ### acme web
 

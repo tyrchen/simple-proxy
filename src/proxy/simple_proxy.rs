@@ -583,3 +583,153 @@ impl ProxyHttp for SimpleProxy {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use http::Method;
+    use once_cell::sync::Lazy;
+    use tokio_test::io::Builder;
+
+    static CONFIG: Lazy<ProxyConfigResolved> = Lazy::new(|| {
+        rustls::crypto::aws_lc_rs::default_provider()
+            .install_default()
+            .unwrap();
+        ProxyConfigResolved::load("fixtures/app.yml").unwrap()
+    });
+
+    async fn create_mock_session() -> Session {
+        // Expected request that our client should write
+        let req = b"GET /users HTTP/1.1\r\nHost: api.acme.com\r\n\r\n";
+
+        // Mock response from the server
+        let _res = b"HTTP/1.1 200 OK\r\n\
+              Date: Sat, 17 May 2025 18:33:10 GMT\r\n\
+              x-server-info: 127.0.0.1:3002\r\n\
+              Content-Type: application/json\r\n\
+              Transfer-Encoding: chunked\r\n\
+              x-simple-proxy: v0.1\r\n\
+              Server: SimpleProxy/0.1\r\n\
+              Connection: close\r\n\
+              \r\n\
+              []";
+
+        // Create a mock IO that expects to receive our request and will respond with the server response
+        let mock_io = Builder::new()
+            .read(req) // Expect client to write this request
+            .write(&[]) // Then server responds with this
+            .build();
+
+        // Create an HTTP client session with the mock IO
+        let mut session = Session::new_h1(Box::new(mock_io));
+        session.read_request().await.unwrap();
+        session
+    }
+
+    #[tokio::test]
+    async fn test_simple_proxy() {
+        let proxy = SimpleProxy::try_new(CONFIG.clone()).unwrap();
+        let mut session = create_mock_session().await;
+        let mut ctx = proxy.new_ctx();
+
+        proxy
+            .early_request_filter(&mut session, &mut ctx)
+            .await
+            .unwrap();
+        proxy.request_filter(&mut session, &mut ctx).await.unwrap();
+        assert_eq!(ctx.host, "api.acme.com");
+        assert_eq!(ctx.port, 80);
+        assert!(ctx.route_entry.as_ref().unwrap().tls);
+
+        let pass = proxy
+            .proxy_upstream_filter(&mut session, &mut ctx)
+            .await
+            .unwrap();
+        assert!(pass);
+
+        let peer = proxy.upstream_peer(&mut session, &mut ctx).await.unwrap();
+        // peer could be 127.0.0.1:3002 or 127.0.0.1:3001
+        let peer_str = peer._address.to_string();
+        assert!(peer_str == "127.0.0.1:3002" || peer_str == "127.0.0.1:3001");
+        assert_eq!(peer.scheme.to_string(), "HTTPS");
+        assert_eq!(peer.sni(), "api.acme.com");
+
+        let mut req_header = RequestHeader::build(Method::GET, b"/users", None).unwrap();
+        req_header.insert_header("host", "api.acme.com").unwrap();
+        proxy
+            .upstream_request_filter(&mut session, &mut req_header, &mut ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(req_header.headers.get("host").unwrap(), "api.acme.com");
+        assert_eq!(
+            req_header
+                .headers
+                .get("x-plugin-request-processed")
+                .unwrap(),
+            "1"
+        );
+        assert_eq!(
+            req_header.headers.get("user-agent").unwrap(),
+            "SimpleProxy/0.1"
+        );
+
+        proxy
+            .request_body_filter(&mut session, &mut None, true, &mut ctx)
+            .await
+            .unwrap();
+
+        // response processing
+        let mut res_header = ResponseHeader::build(StatusCode::OK, None).unwrap();
+        res_header
+            .insert_header("content-type", "application/json")
+            .unwrap();
+        res_header
+            .insert_header("x-server-info", "127.0.0.1:3001")
+            .unwrap();
+        res_header.insert_header("content-length", "283").unwrap();
+        res_header.insert_header("connection", "close").unwrap();
+        res_header
+            .insert_header("date", "Sat, 17 May 2025 18:27:43 GMT")
+            .unwrap();
+        proxy.upstream_response_filter(&mut session, &mut res_header, &mut ctx);
+
+        assert_eq!(
+            res_header.headers.get("date").unwrap(),
+            "Sat, 17 May 2025 18:27:43 GMT"
+        );
+        assert_eq!(
+            res_header.headers.get("x-server-info").unwrap(),
+            "127.0.0.1:3001"
+        );
+        assert_eq!(
+            res_header.headers.get("content-type").unwrap(),
+            "application/json"
+        );
+        assert_eq!(res_header.headers.get("connection").unwrap(), "close");
+        assert_eq!(
+            res_header.headers.get("transfer-encoding").unwrap(),
+            "chunked"
+        );
+        assert_eq!(res_header.headers.get("x-simple-proxy").unwrap(), "v0.1");
+        assert_eq!(res_header.headers.get("server").unwrap(), "SimpleProxy/0.1");
+        assert!(res_header.headers.get("content-length").is_none());
+
+        proxy
+            .response_filter(&mut session, &mut res_header, &mut ctx)
+            .await
+            .unwrap();
+
+        let mut body = Some(Bytes::from_static(b"[{}]"));
+        proxy.upstream_response_body_filter(&mut session, &mut body, true, &mut ctx);
+        proxy
+            .response_body_filter(&mut session, &mut body, true, &mut ctx)
+            .unwrap();
+
+        assert_eq!(
+            body.unwrap(),
+            Bytes::from_static(b"[{\"x-simple-proxy\":\"v0.1\"}]")
+        );
+    }
+}
