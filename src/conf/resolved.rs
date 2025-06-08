@@ -1,4 +1,4 @@
-use crate::conf::raw::{GlobalConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
+use crate::conf::raw::{WafRuleConfig, GlobalConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
 use crate::plugins::PluginConfig;
 use anyhow::{Result, anyhow};
 use rand::rngs::OsRng;
@@ -12,6 +12,13 @@ pub struct ProxyConfigResolved {
     pub global: GlobalConfigResolved,
     pub servers: HashMap<String, ServerConfigResolved>,
     pub plugins: Option<Vec<PluginConfig>>,
+    pub waf_rules: WafConfigResolved,
+}
+
+#[derive(Debug, Clone)]
+pub struct WafConfigResolved {
+    pub rules: HashMap<String, Vec<String>>,
+    pub param_types: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +49,16 @@ impl ProxyConfigResolved {
     pub fn load(file: impl AsRef<Path>) -> Result<Self> {
         let config = SimpleProxyConfig::from_yaml_file(file)?;
         Self::try_from(config)
+    }
+}
+
+impl WafConfigResolved {
+    pub fn load(dir_path: impl AsRef<Path>) -> Result<Self> {
+        let waf_raw_config = WafRuleConfig::from_dir(dir_path)?;
+        Ok(WafConfigResolved{
+            rules: waf_raw_config.rules,
+            param_types: waf_raw_config.param_types,
+        })
     }
 }
 
@@ -92,7 +109,12 @@ impl TryFrom<SimpleProxyConfig> for ProxyConfigResolved {
     type Error = anyhow::Error;
 
     fn try_from(raw: SimpleProxyConfig) -> Result<Self, Self::Error> {
+
+        // Get waf rules
+        let waf_rules = WafConfigResolved::load(&raw.waf_rules)?;
+
         // Build upstream map for lookups
+        // 先读出 upstream 给 server 匹配
         let mut upstream_map = HashMap::new();
         for upstream in &raw.upstreams {
             let resolved_upstream = UpstreamConfigResolved::from(upstream);
@@ -100,9 +122,11 @@ impl TryFrom<SimpleProxyConfig> for ProxyConfigResolved {
         }
 
         // Resolve global config
+        // global 信息读取
         let global = GlobalConfigResolved::try_from(&raw.global)?;
 
         // Resolve server configs
+        // server 配置匹配 upstream 配置，完成 server_name -> upstream_server 信息表的构建
         let mut servers = HashMap::new();
         for server in raw.servers {
             let resolved_server = ServerConfigResolved::try_from_with_maps(&server, &upstream_map)?;
@@ -119,6 +143,7 @@ impl TryFrom<SimpleProxyConfig> for ProxyConfigResolved {
         Ok(ProxyConfigResolved {
             global,
             servers,
+            waf_rules,
             plugins: raw.plugins,
         })
     }

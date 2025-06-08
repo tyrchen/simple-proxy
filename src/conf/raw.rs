@@ -2,6 +2,9 @@ use crate::plugins::PluginConfig;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::fs;
+use std::io::{self, BufRead};
+use std::collections::HashMap;
 
 /// The main configuration struct for Simple Proxy
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -14,6 +17,9 @@ pub struct SimpleProxyConfig {
 
     /// Upstream server configurations
     pub upstreams: Vec<UpstreamConfig>,
+
+    /// waf rules dir path
+    pub waf_rules: PathBuf,
 
     /// Plugin configurations
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,6 +96,55 @@ impl SimpleProxyConfig {
         Ok(())
     }
 }
+
+// WAF Rule Config
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WafRuleConfig {
+    
+    // 规则正则
+    pub rules: HashMap<String, Vec<String>>,
+
+    // 参数类别
+    pub param_types: Vec<String>,
+}
+
+impl WafRuleConfig {
+    // load rules
+    pub fn from_dir(dir_path: impl AsRef<Path>) -> Result<Self, io::Error> {
+        let mut rules = HashMap::new();
+        let mut param_types = Vec::new();
+
+        // 读取文件夹中的所有文件
+        for entry in fs::read_dir(dir_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path.file_stem().unwrap().to_string_lossy().into_owned();
+                param_types.push(file_name.clone());
+                let rule_vec = Self::read_file(path.to_str().unwrap())?;
+                // println!("{:?}", rule_vec);
+                rules.insert(file_name, rule_vec);
+            }
+        }
+
+        Ok(WafRuleConfig { rules, param_types })
+    }
+
+    // load rules from file
+    pub fn read_file(file_path: &str) -> Result<Vec<String>, io::Error> {
+        let file = fs::File::open(file_path)?;
+        let reader = io::BufReader::new(file);
+        let mut rules = Vec::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            rules.push(line.trim().to_string());
+        }
+
+        Ok(rules)
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
