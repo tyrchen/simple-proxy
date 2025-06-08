@@ -6,9 +6,9 @@ use pingora::{
 };
 use std::time::Duration;
 use tokio::time::interval;
-use tracing::{debug, info};
+use tracing::info;
 
-const HEALTH_SERVICE_INTERVAL: Duration = Duration::from_secs(5);
+const HEALTH_SERVICE_INTERVAL: Duration = Duration::from_secs(20);
 
 impl HealthService {
     pub fn new(route_table: RouteTable) -> Self {
@@ -32,7 +32,7 @@ impl Service for HealthService {
             interval.tick().await;
 
             for (host, entry) in route_table.iter() {
-                debug!("Checking health of {}", host);
+                info!("Checking health of {}", host);
 
                 entry.upstream.update().await.ok();
                 entry.upstream.backends().run_health_check(true).await;
